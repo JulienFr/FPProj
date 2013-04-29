@@ -233,9 +233,8 @@ instance Show Value where
 -- Simple Interpreter
 eval :: Env -> Exp -> Value
 eval env (BuiltIn (Nat n))   = VI n                                     -- Natural Integer
-eval env ((Fix x e):$ y :$ z)= eval env (Fix x (e :$ y :$ z)) -- to take in account the fix with two arguments
-eval env (Fix x t)           = eval env ((Abstract x t) :$ (Fix x t))   -- fix x.M
-eval env ((Abstract x e):$ t)= eval (ext env (x, VE t)) e               -- Beta Reduction (\x.e) t = e[x:=t]
+eval env ((Fix x t):$ y :$ z)= eval env (Fix x (t :$ y :$ z)) -- to take in account the fix with two arguments
+eval env (Fix x t)           = eval (ext env (x, VE (Fix x t))) t       -- fix x.M with Beta Reduction (\x.e) t = e[x:=t]
 eval env (Let x e1 e2)       = eval (ext env (x, eval env e1)) e2       -- let ... in ...
 eval env (Abstract x e)      = VC (\v -> eval (ext env (x,v)) e)        -- Lambda abstraction
 eval env (LVar x)            = 										    -- Variable
@@ -249,7 +248,7 @@ eval env (LVar x :$ e1 :$ e2)    =                                    -- Primiti
 	in case v0 of
 		VT ft -> ft (eval env e1) (eval env e2)
 		_ -> v0
-		
+
 eval env (e1 :$ e2) =                                                 -- Coupled Function application
     let v1 = eval env e1
         v2 = eval env e2
