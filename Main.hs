@@ -4,7 +4,8 @@ import Parser
 import qualified Data.IntMap as M
 
 -- Greater Common Divisor
-exGCD = "(fix gcd . \\t . \\a . \\b . ifzero b a (gcd t (minus a (mul b (div a b))) b))";
+exModulo = "(minus a (mul b (div a b)))";
+exGCD = "(fix gcd . \\a . \\b . ifzero b a (gcd b " ++ exModulo ++ "))";
 {- Euclide Algorithm used for Greatest Common Divisor
 function gcd(a, b)
     while b ≠ 0
@@ -13,7 +14,9 @@ function gcd(a, b)
        a := t
     return a		
 -}
-exGCD1 = exGCD ++ " 0 25 10";
+exGCD1 = exGCD ++ " 25 10";
+
+exFix = "fix x . 1"
 
 example0 = "minus 5 2"
 example01 = "ifzero 1 5 2"
@@ -116,16 +119,22 @@ occurs v (TV v2) tve =     -- in case of a type variable
 
 -- Type Checker Helper (does almost all of the type-checker's job
 teval2 :: TEnv -> Exp -> (TVE -> (Typ,TVE))         
-teval2 env (BuiltIn (Nat n)) = \tve0 -> (TInt,tve0)           -- integer constant
+teval2 env (BuiltIn (Nat n)) = \tve0 -> (TInt,tve0)             -- integer constant
 teval2 env (Abstract x e) = \tve0 ->
 	let
 	(tv,tve1) = newtv tve0
 	(te,tve2) = teval2 (text env (x, tv)) e tve1
 	in (tv :> te, tve2)
-teval2 env (Fix x t) = \tve0 -> teval2 env ((Abstract x t) :$ (Fix x t)) tve0 -- fix x.M
+teval2 env (Fix x t) = \tve0 ->                                 -- fix x.M
+	let 
+	(tv, tve1) = teval2 env (Abstract x t) tve0   -- type-check Lx.t
+	(tb, tve2) = newtv tve1
+	in case unify tv (tb :> tb) tve2 of
+		Right tve -> (tb,tve)
+		Left err -> error $ "The fix operator does not unify with the type Int->Int" ++ err ++ "\n"
 teval2 env (Let x e1 e2) = \tve0 ->                             -- let
 	let
-	(t1, tve1) = teval2 env e1 tve0
+	(t1, tve1) = teval2 env e1 tve0	
 	in teval2 (text env (x, t1)) e2 tve1
 teval2 env (LVar "ifzero" :$ e1 :$ e2 :$ e3) = \tve0 ->   -- ifzero primitive function
 	let
@@ -217,13 +226,14 @@ ext env xt = xt : env
 
 instance Show Value where
     show (VI n) = "VI " ++ show n
-    show (VE _) = "<term value>"
-    show (VC _) = "<coupled function>"
+    show (VE x) = "<term value>[" ++ show x ++ "]"
+    show (VC y) = "<coupled function>"
     show (VT _) = "<tripled function>"
 
 -- Simple Interpreter
 eval :: Env -> Exp -> Value
 eval env (BuiltIn (Nat n))   = VI n                                     -- Natural Integer
+eval env ((Fix x e):$ y :$ z)= eval env (Fix x (e :$ y :$ z)) -- to take in account the fix with two arguments
 eval env (Fix x t)           = eval env ((Abstract x t) :$ (Fix x t))   -- fix x.M
 eval env ((Abstract x e):$ t)= eval (ext env (x, VE t)) e               -- Beta Reduction (\x.e) t = e[x:=t]
 eval env (Let x e1 e2)       = eval (ext env (x, eval env e1)) e2       -- let ... in ...
@@ -239,6 +249,7 @@ eval env (LVar x :$ e1 :$ e2)    =                                    -- Primiti
 	in case v0 of
 		VT ft -> ft (eval env e1) (eval env e2)
 		_ -> v0
+		
 eval env (e1 :$ e2) =                                                 -- Coupled Function application
     let v1 = eval env e1
         v2 = eval env e2
