@@ -233,7 +233,6 @@ instance Show Value where
 -- Simple Interpreter
 eval :: Env -> Exp -> Value
 eval env (BuiltIn (Nat n))   = VI n                                     -- Natural Integer
-eval env ((Fix x t):$ y :$ z)= eval env (Fix x (t :$ y :$ z)) -- to take in account the fix with two arguments
 eval env (Fix x t)           = eval (ext env (x, VE (Fix x t))) t       -- fix x.M with Beta Reduction (\x.e) t = e[x:=t]
 eval env (Let x e1 e2)       = eval (ext env (x, eval env e1)) e2       -- let ... in ...
 eval env (Abstract x e)      = VC (\v -> eval (ext env (x,v)) e)        -- Lambda abstraction
@@ -247,14 +246,15 @@ eval env (LVar x :$ e1 :$ e2)    =                                    -- Primiti
     let v0 = lkup env x
 	in case v0 of
 		VT ft -> ft (eval env e1) (eval env e2)
+		VE fe -> eval env (fe :$ e1 :$ e2) -- added! (of course one case was missing)
 		_ -> v0
-
+		
 eval env (e1 :$ e2) =                                                 -- Coupled Function application
     let v1 = eval env e1
         v2 = eval env e2
     in case v1 of
-        VC f -> f v2
-        VE e -> eval env (e :$ e2)  -- terms from beta reduction interpreted
+        VC fc -> fc v2
+        VE fe -> eval env (fe :$ e2)  -- terms from beta reduction interpreted
         v -> error $ "Trying to apply a non-coupled-function: " ++ show v
 		
 -- Main function
@@ -268,7 +268,3 @@ main = do
                     let res = eval env0 exp
                     print res
                 else error $ "Typed-checking failed with type: " ++ show typ
-
-
-
-
